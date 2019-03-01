@@ -1,5 +1,6 @@
 import urllib.request
 import shutil
+import requests
 
 #TODO: COMMENT ABOUT SSL CONTEXT/INSTALL in order to work with HTTPS
 #TODO: Store global var of filename?
@@ -8,6 +9,7 @@ import shutil
 def download_from_s3(url):
     file_name = url.split('/')[-1]
     # Download the file from `url` and save it locally under `file_name`:
+
     with urllib.request.urlopen(url) as response, open(file_name, 'wb') as out_file:
         shutil.copyfileobj(response, out_file)
         print("Bytes: " + response.info().get_all("Content-Length")[0] + "\n")
@@ -37,6 +39,7 @@ def writeToNameNode():
     #TODO: Send file name + file size to NN, "data.tsv.gz 698828243"
 
     #TODO: Receive DN List + block size from NN
+    requests.get
 
 def getFromNameNode():
     #TODO: Receive list of DN's
