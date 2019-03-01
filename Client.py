@@ -32,22 +32,32 @@ def read_in_chunks(file_object, chunk_size=67108864):
             break
         yield data
 
+def putToNameNode():
+    task = {"name": "Matt"}
+    resp = requests.post('http://127.0.0.1:5002/', json=task)
+    if resp.status_code != 200:
+        # This means something went wrong.
+        #raise ApiError('GET /tasks/ {}'.format(resp.status_code))
+        print("Error code: " + str(resp.status_code))
+    else:
+        print("Successful post")
+        print(resp.json())
 
-def writeToNameNode():
-    #TODO: Get file name
-    #TODO: Get file size
-    #TODO: Send file name + file size to NN, "data.tsv.gz 698828243"
 
-    #TODO: Receive DN List + block size from NN
-    requests.get
+
 
 def getFromNameNode():
     #TODO: Receive list of DN's
     #TODO: Receive list of Blocks + Sort them?
+    resp = requests.get('http://127.0.0.1:5002/')
+    if resp.status_code != 200:
+        # This means something went wrong.
+        #raise ApiError('GET /tasks/ {}'.format(resp.status_code))
+        print("Error code: " + str(resp.status_code))
+    else:
+        print(resp.json())
 
-def writeToDataNode():
-    #TODO: Open stream of file
-    #TODO: Read from range of
+
 
 def main():
     print("Welcome to the Seattle University File System (SUFS)!")
@@ -63,7 +73,8 @@ def main():
     url = "https://s3.amazonaws.com/amazon-reviews-pds/tsv/sample_us.tsv"
     #667MB File, should test 1GB
     url2 = "https://s3.amazonaws.com/amazon-reviews-pds/tsv/amazon_reviews_us_Electronics_v1_00.tsv.gz"
-    download_from_s3(url2)
-
+    #download_from_s3(url2)
+    putToNameNode()
+    getFromNameNode()
 if __name__ == "__main__":
     main()

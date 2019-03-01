@@ -116,7 +116,22 @@ class SendFileStructure(Resource):
         return "file not found", 404
 
 
+class DummyAPI(Resource):
+    def get(self):
+        return "Hello World!"
+    def post(self):
+        parser = reqparse.RequestParser()
+        parser.add_argument("name")
+        args = parser.parse_args()
+        print(args['name'])
+        return args['name']
+
 api.add_resource(DetermineBlocks, "/determineblocks/<string:filename>/<int:filesize>/<int:blocksize>/<int:replicationfactor>")
 api.add_resource(Heartbeat, "/heartbeat/<string:DataNode>")
 api.add_resource(SendFileStructure, "/filestructure/<string:filename>")
-app.run(debug=True)
+#api.add_resource(DummyAPI, "/DummyAPI/hello")
+api.add_resource(DummyAPI, "/")
+
+
+if __name__ == '__main__':
+     app.run(port='5002')
