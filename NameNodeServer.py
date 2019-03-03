@@ -2,6 +2,7 @@ from flask import Flask
 from flask_restful import Api, Resource, reqparse
 import time
 import constants
+import requests
 
 app = Flask(__name__)
 api = Api(app)
@@ -59,7 +60,7 @@ class HeartbeatTimeout(Resource):
 
 # receiving block report from DataNodes
 class BlockReport(Resource):
-    def post(self, blockreport):
+    def post(self, DNID):
         # TODO:
         return 'block report received'
 
@@ -159,6 +160,7 @@ class DummyAPI(Resource):
 api.add_resource(GetListOfBlocksAndDNs, "/GetListOfBlocksAndDNs/")
 api.add_resource(Heartbeat, "/heartbeat/")
 api.add_resource(SendFileStructure, "/filestructure/<string:filename>")
+api.add_resource(BlockReport, "/BlockReport/<string:DNID>")
 api.add_resource(DummyAPI, "/")
 
 

@@ -1,4 +1,5 @@
 import sys
+import os
 import time
 from flask import Flask
 from flask_restful import Api, Resource, reqparse
@@ -9,23 +10,40 @@ import threading
 app = Flask(__name__)
 api = Api(app)
 
-parser = reqparse.RequestParser()
-parser.add_argument('file')
+
 
 '''
 Map of the entire storeage in the current DataNode i.e BlockData
 Structure:
 {
-  "/block1": {
-                     data: "actual data1",
+  "blockID": {
+                     filename: "filename1",
                  },
-  "/block2": {
-                    data: "actual data2",
+  "blockID": {
+                    filename: "filename2",
                  },
 }
 '''
-BlockData = {}
+BlockList = {}
 
+def addBlockList(blockNumber, filename):
+    BlockList[blockNumber] = {"filename": filename}
+
+def getFilenameFromBlockList(blockNumber):
+    if(blockNumber in BlockList):
+        return BlockList[blockNumber]["filename"]
+    return False
+
+def storeBlockData(filename, data):
+    f = open("./blockDataList/"+filename, "w")
+    f.write(data)
+    f.close();
+
+def getBlockData(filename):
+    f = open("./blockDataList/"+filename, "r")
+    data = f.read()
+    f.close()
+    return data
 
 def sendHeartBeats(name):
     while True:
@@ -35,8 +53,17 @@ def sendHeartBeats(name):
             print("Error code: " + str(resp.status_code))
         else:
             print(resp.json())
-
         time.sleep(constants.HEARTBEAT_INTERVAL)
+
+def sendBlockReport(name):
+    while True:
+        task = {"BlockReport" : BlockList}
+        resp = requests.post('http://127.0.0.1:5002/BlockReport/'+name, json=task)
+        if resp.status_code != 200:
+            print("Error code: " + str(resp.status_code))
+        else:
+            print(resp.json())
+        time.sleep(constants.BLOCKREPORT_INTERVAL)
 
 # send heartbeat to Name Node in a given time frame.
 class Heartbeat(Resource):
@@ -45,15 +72,9 @@ class Heartbeat(Resource):
         return ''
 
 
-# send block report from DataNodes
-class BlockReport(Resource):
-    def post(self, blockreport):
-        # TODO: make a post request contain the block report
-        return ''
-
 
 class BlockData(Resource):
-    def post(self, blockNumber, data):
+    def post(self, blockNumber):
         """
         This methods store the provided data in the provided block number
         The response structure will look like this:
@@ -67,7 +88,14 @@ class BlockData(Resource):
         :param data:
         :return:
         """
-        if (blockNumber != ""):
+
+        parser = reqparse.RequestParser()
+        parser.add_argument("filename")
+        parser.add_argument("data")
+        args = parser.parse_args()
+        if(args["filename"] and args["data"]):
+            addBlockList(blockNumber, args["filename"])
+            storeBlockData(args["filename"], args["data"])
             return {"status": "successful"}
         return {"status": "failed"}, 404
 
@@ -84,13 +112,30 @@ class BlockData(Resource):
         :param blockNumber:
         :return:
         """
-        if (blockNumber != ""):
-            return BlockData.blockNumber
+        filename = getFilenameFromBlockList(blockNumber)
+        if(filename):
+            data = getBlockData(filename)
+            return {"data": data}
         return "block not found", 404
 
+class DummyAPI(Resource):
+    def get(self):
+        return "Hello World!"
+
+    def post(self):
+        parser = reqparse.RequestParser()
+        parser.add_argument("name")
+        args = parser.parse_args()
+        return args['name']
+
+
 api.add_resource(BlockData, "/BlockData/<string:blockNumber>")
+api.add_resource(DummyAPI, "/")
 
 if __name__ == '__main__':
     dn_port = int(sys.argv[1])
     threading.Thread(target=sendHeartBeats, args=(str(dn_port),)).start()
+    threading.Thread(target=sendBlockReport, args=(str(dn_port),)).start()
+    os.system("rm -r blockDataList")
+    os.system("mkdir blockDataList")
     app.run(port = dn_port)
