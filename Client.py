@@ -33,8 +33,8 @@ def read_in_chunks(file_object, chunk_size=67108864):
         yield data
 
 def putToNameNode():
-    task = {"name": "Matt"}
-    resp = requests.post('http://127.0.0.1:5002/', json=task)
+    task = {"filename": "file1", "filesize" : "1", "size_suffix": "GB"}
+    resp = requests.post('http://127.0.0.1:5002/GetListOfBlocksAndDNs/', json=task)
     if resp.status_code != 200:
         # This means something went wrong.
         #raise ApiError('GET /tasks/ {}'.format(resp.status_code))
@@ -75,6 +75,6 @@ def main():
     url2 = "https://s3.amazonaws.com/amazon-reviews-pds/tsv/amazon_reviews_us_Electronics_v1_00.tsv.gz"
     #download_from_s3(url2)
     putToNameNode()
-    getFromNameNode()
+    #getFromNameNode()
 if __name__ == "__main__":
     main()

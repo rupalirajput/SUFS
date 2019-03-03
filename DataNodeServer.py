@@ -1,5 +1,10 @@
+import sys
+import time
 from flask import Flask
 from flask_restful import Api, Resource, reqparse
+import requests
+import constants
+import threading
 
 app = Flask(__name__)
 api = Api(app)
@@ -21,6 +26,17 @@ Structure:
 '''
 BlockData = {}
 
+
+def sendHeartBeats(name):
+    while True:
+        task = {"DataNodeName": name}
+        resp = requests.post('http://127.0.0.1:5002/heartbeat/', json=task)
+        if resp.status_code != 200:
+            print("Error code: " + str(resp.status_code))
+        else:
+            print(resp.json())
+
+        time.sleep(constants.HEARTBEAT_INTERVAL)
 
 # send heartbeat to Name Node in a given time frame.
 class Heartbeat(Resource):
@@ -52,8 +68,8 @@ class BlockData(Resource):
         :return:
         """
         if (blockNumber != ""):
-            return {status: "successful"}
-        return {status: "failed"}, 404
+            return {"status": "successful"}
+        return {"status": "failed"}, 404
 
     def get(self, blockNumber):
         """
@@ -72,6 +88,9 @@ class BlockData(Resource):
             return BlockData.blockNumber
         return "block not found", 404
 
-
 api.add_resource(BlockData, "/BlockData/<string:blockNumber>")
-app.run(debug=True)
+
+if __name__ == '__main__':
+    dn_port = int(sys.argv[1])
+    threading.Thread(target=sendHeartBeats, args=(str(dn_port),)).start()
+    app.run(port = dn_port)
