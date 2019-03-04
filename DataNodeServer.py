@@ -26,13 +26,8 @@ Structure:
 '''
 BlockList = {}
 
-def addBlockList(blockNumber, filename):
-    BlockList[blockNumber] = {"filename": filename}
-
-def getFilenameFromBlockList(blockNumber):
-    if(blockNumber in BlockList):
-        return BlockList[blockNumber]["filename"]
-    return False
+def addBlockList(blockNumber, size):
+    BlockList[blockNumber] = {"size": size}
 
 def storeBlockData(filename, data):
     f = open("./blockDataList/"+filename, "w")
@@ -90,12 +85,12 @@ class BlockData(Resource):
         """
 
         parser = reqparse.RequestParser()
-        parser.add_argument("filename")
         parser.add_argument("data")
+        parser.add_argument("size")
         args = parser.parse_args()
-        if(args["filename"] and args["data"]):
-            addBlockList(blockNumber, args["filename"])
-            storeBlockData(args["filename"], args["data"])
+        if(args["size"] and args["data"]):
+            addBlockList(blockNumber, args["size"])
+            storeBlockData(blockNumber, args["data"])
             return {"status": "successful"}
         return {"status": "failed"}, 404
 
@@ -112,9 +107,8 @@ class BlockData(Resource):
         :param blockNumber:
         :return:
         """
-        filename = getFilenameFromBlockList(blockNumber)
-        if(filename):
-            data = getBlockData(filename)
+        if(blockNumber in BlockList):
+            data = getBlockData(blockNumber)
             return {"data": data}
         return "block not found", 404
 
