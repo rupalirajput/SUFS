@@ -53,7 +53,7 @@ def sendHeartBeats(name):
 
 def sendBlockReport(name):
     while True:
-        task = { "AvailableCapacity" : psutil.virtual_memory().available, "BlockReport" : BlockList}
+        task = { "AvailableCapacity" : psutil.virtual_memory().available, "TotalCapacity" : psutil.virtual_memory().total, "BlockReport" : BlockList}
         resp = requests.post('http://127.0.0.1:5002/BlockReport/'+name, json=task)
         if resp.status_code != 200:
             print("Error code: " + str(resp.status_code))
@@ -133,4 +133,6 @@ if __name__ == '__main__':
     threading.Thread(target=sendBlockReport, args=(str(dn_port),)).start()
     os.system("rm -r blockDataList")
     os.system("mkdir blockDataList")
+    print(psutil.virtual_memory().available)
+    print(psutil.virtual_memory().total)
     app.run(port = dn_port)
