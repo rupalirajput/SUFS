@@ -1,6 +1,7 @@
 import sys
 import os
 import time
+import psutil
 from flask import Flask
 from flask_restful import Api, Resource, reqparse
 import requests
@@ -52,7 +53,7 @@ def sendHeartBeats(name):
 
 def sendBlockReport(name):
     while True:
-        task = {"BlockReport" : BlockList}
+        task = { "AvailableCapacity" : psutil.virtual_memory().available, "BlockReport" : BlockList}
         resp = requests.post('http://127.0.0.1:5002/BlockReport/'+name, json=task)
         if resp.status_code != 200:
             print("Error code: " + str(resp.status_code))

@@ -62,6 +62,11 @@ class HeartbeatTimeout(Resource):
 class BlockReport(Resource):
     def post(self, DNID):
         # TODO:
+        parser = reqparse.RequestParser()
+        parser.add_argument("AvailableCapacity");
+        parser.add_argument("BlockReport")
+        args= parser.parse_args();
+        print(args);
         return 'block report received'
 
     def get(self):
