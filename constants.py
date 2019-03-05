@@ -1,5 +1,7 @@
+import humanfriendly
 
-BLOCKSIZE = 64 # in MBs
-HEARTBEAT_TIMEOUT = 10 # in seconds
-HEARTBEAT_INTERVAL = 5 # in seconds
-BLOCKREPORT_INTERVAL = 15 # in seconds
+BLOCKSIZE = humanfriendly.parse_size("64MiB")
+HEARTBEAT_TIMEOUT = humanfriendly.parse_timespan("10s")
+HEARTBEAT_INTERVAL = humanfriendly.parse_timespan("1s")
+BLOCKREPORT_INTERVAL = humanfriendly.parse_timespan("1s")
+REPLICATION_FACTIOR = 3

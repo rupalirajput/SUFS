@@ -33,15 +33,17 @@ def read_in_chunks(file_object, chunk_size=67108864):
         yield data
 
 def putToNameNode():
-    task = {"filename": "file1", "filesize" : "1", "size_suffix": "GB"}
-    resp = requests.post('http://127.0.0.1:5002/GetListOfBlocksAndDNs/', json=task)
-    if resp.status_code != 200:
+    task = {"filename": "file1", "filesize" : "1GB"}
+    resp = requests.post('http://127.0.0.1:5002/AllocateBlocks/', json=task)
+    if resp.status_code == 200:
+        print("Successful post")
+        print(resp.json())
+    elif resp.status_code == 406:
+        print("HDFS does not have enough storage for replication; please consider adding more data nodes")
+    else:
         # This means something went wrong.
         #raise ApiError('GET /tasks/ {}'.format(resp.status_code))
         print("Error code: " + str(resp.status_code))
-    else:
-        print("Successful post")
-        print(resp.json())
 
 
 
