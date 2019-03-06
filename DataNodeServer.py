@@ -125,7 +125,7 @@ class BlockData(Resource):
         if (blockNumber in BlockList):
             data = getBlockData(blockNumber)
             return {"data": data}
-        return "block not found", 404
+        return {"status":"block not found"}, 404
 
 
 class DummyAPI(Resource):
