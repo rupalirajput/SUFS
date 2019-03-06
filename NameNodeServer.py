@@ -105,13 +105,6 @@ class BlockReport(Resource):
         """
         pass
 
-
-# {
-# “File1.txt”: {
-# “File1block1": [“127.0.0.1”, “127.0.0.2",],
-# “File2block2”: [“127.0.0.3", “127.0.0.2”,]
-# }
-
 class AllocateBlocks(Resource):
     def post(self):
         """
@@ -120,16 +113,11 @@ class AllocateBlocks(Resource):
 
         Response:
         {
-            "Availble DNs": [
-                {
-                    "name": <name>,
-                    "available_capacity": <float>,
-                },
-                {
-                ...
-                }
-            ],
-            "file_chunks": [0, 64, 128, 192, 256, 320, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960]
+            # {
+            # “File1.txt”: {
+            # “File1block1": [“127.0.0.1”, “127.0.0.2",],
+            # “File2block2”: [“127.0.0.3", “127.0.0.2”,]
+            # }
         }
 
         :param filename:
@@ -215,8 +203,10 @@ class DummyAPI(Resource):
     def post(self):
         parser = reqparse.RequestParser()
         parser.add_argument("name")
+        parser.add_argument("size")
         args = parser.parse_args()
         print(args['name'])
+        print(args['size'])
         return args['name']
 
 
