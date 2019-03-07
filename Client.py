@@ -123,6 +123,7 @@ def putToDataNode():
 
     blockData = f.read(CHUNK_SIZE)
 
+    # TODO: This is very slow; must be doing reads in parallel.
     while writeResponse != None and blockData:
         for block in writeResponse:
             if blockData:
@@ -142,7 +143,7 @@ def send(blockID, ip, blockData):
     data = str(base64.b64encode(blockData))
     data = data[2: len(data) - 1]
 
-    task = {"data": data, "size": str(blockData.__sizeof__())}
+    task = {"data": data, "size": blockData.__sizeof__()}
     resp = requests.post('http://127.0.0.1:' + ip + '/BlockData/' + blockID, json=task)
     if resp.status_code != 200:
         # This means something went wrong.
@@ -150,7 +151,6 @@ def send(blockID, ip, blockData):
         print("Error code: " + str(resp.status_code))
     else:
         print(blockID + " written to " + ip)
-        print(resp.json())
 
 def getFromDataNode():
     blockID = "block"

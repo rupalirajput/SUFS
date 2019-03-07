@@ -2,11 +2,15 @@ import sys
 import os
 import time
 import psutil
-from flask import Flask
-from flask_restful import Api, Resource, reqparse
 import requests
 import constants
 import threading
+
+from flask import Flask
+from flask_restful import Api, Resource, request
+from flask import Flask, abort
+import werkzeug.exceptions as HTTPStatus
+from readerwriterlock import rwlock
 
 app = Flask(__name__)
 api = Api(app)
@@ -23,33 +27,45 @@ Structure:
                  },
 }
 '''
-BlockList = {}
+gLock = rwlock.RWLockRead()
+BlockList = None
 DATA_DIR = None
-
-
-def addBlockList(blockNumber, size):
-    BlockList[blockNumber] = {"size": size}
 
 
 def storeBlockData(filename, data):
     # TODO: This is not fault tolerant. What if the system crashes after open() below ?
     f = open(os.path.join(DATA_DIR, filename), "w")
     f.write(data)
-    f.close();
+    f.close()
 
 
 def getBlockData(filename):
+    """
+
+    :type filename: str
+    """
     f = open(os.path.join(DATA_DIR, filename), "r")
     data = f.read()
     f.close()
     return data
+
+def scanData(dir):
+    """
+
+    :type dir: str
+    """
+    BlockList = {}
+    for blockNumber in os.listdir(dir):
+        BlockList[blockNumber] = {"size": os.path.getsize(os.path.join(dir, blockNumber))}
+
+    return BlockList
 
 
 def sendHeartBeats(name):
     task = {"DataNodeName": name}
     while True:
         try:
-            resp = requests.post('http://127.0.0.1:5002/heartbeat/', data=task)
+            resp = requests.post('http://127.0.0.1:5002/heartbeat/', json=task)
             if resp.status_code != 200:
                 print("Error code: " + str(resp.status_code))
             else:
@@ -61,11 +77,15 @@ def sendHeartBeats(name):
 
 
 def sendBlockReport(name):
+    global BlockList
+
     while True:
         du = psutil.disk_usage(DATA_DIR)
-        task = {"AvailableCapacity": du.free, "TotalCapacity": du.total, "BlockReport": BlockList}
+        with gLock.gen_rlock():
+            task = {"AvailableCapacity": du.free, "TotalCapacity": du.total, "BlockReport": BlockList.copy()}
+
         try:
-            resp = requests.post('http://127.0.0.1:5002/BlockReport/' + name, data=task)
+            resp = requests.post('http://127.0.0.1:5002/BlockReport/' + name, json=task)
             if resp.status_code != 200:
                 print("Error code: " + str(resp.status_code))
             else:
@@ -87,45 +107,46 @@ class BlockData(Resource):
     def post(self, blockNumber):
         """
         This methods store the provided data in the provided block number
-        The response structure will look like this:
+        The response is:
 
-        Response:
-        {
-             status: "successful"
-        }
+        - 400 for bad request.
+        - 200 for success
 
         :param blockNumber:
         :param data:
         :return:
         """
+        global BlockList
 
-        parser = reqparse.RequestParser()
-        parser.add_argument("data")
-        parser.add_argument("size")
-        args = parser.parse_args()
-        if (args["size"] and args["data"]):
-            addBlockList(blockNumber, args["size"])
-            storeBlockData(blockNumber, args["data"])
-            return {"status": "successful"}
-        return {"status": "failed"}, 404
+        args = request.get_json(force=True)
+        if "size" not in args or "data" not in args or type(args["size"]) != int:
+            abort(HTTPStatus.BadRequest.code)
+
+        with gLock.gen_wlock():
+            BlockList[blockNumber] = {"size": args["size"]}
+
+        storeBlockData(blockNumber, args["data"])
 
     def get(self, blockNumber):
         """
         This methods return the data in the given block number to the client
         The response structure will look like this:
 
-        Response:
-        {
-            data: "actual data",
-        }
+        Response Codes:
+        - 404 - block not found
+        - 200 - {"data": <bytes>}
 
         :param blockNumber:
         :return:
         """
-        if (blockNumber in BlockList):
-            data = getBlockData(blockNumber)
-            return {"data": data}
-        return {"status":"block not found"}, 404
+        global BlockList
+
+        with gLock.gen_rlock():
+            if blockNumber not in BlockList:
+                abort(HTTPStatus.NotFound.code)
+
+        data = getBlockData(blockNumber)
+        return {"data": data}
 
 
 class DummyAPI(Resource):
@@ -133,9 +154,7 @@ class DummyAPI(Resource):
         return "Hello World!"
 
     def post(self):
-        parser = reqparse.RequestParser()
-        parser.add_argument("name")
-        args = parser.parse_args()
+        args = request.get_json(force=True)
         return args['name']
 
 
@@ -149,6 +168,9 @@ if __name__ == '__main__':
         os.mkdir(DATA_DIR)
     except FileExistsError:
         pass
+
+    # Scan the data before sending blocklist.
+    BlockList = scanData(DATA_DIR)
 
     threading.Thread(target=sendHeartBeats, args=(str(dn_port),)).start()
     threading.Thread(target=sendBlockReport, args=(str(dn_port),)).start()

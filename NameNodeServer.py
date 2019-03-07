@@ -1,13 +1,13 @@
 import math
 import os
-
-import humanfriendly
-from flask import Flask, abort
-from flask_restful import Api, Resource, reqparse
 import time
 import constants
+
 from readerwriterlock import rwlock
 import werkzeug.exceptions as HTTPStatus
+from flask import Flask, abort
+from flask_restful import Api, Resource, request
+from collections import Counter
 
 app = Flask(__name__)
 api = Api(app)
@@ -35,6 +35,7 @@ Structure:
 '''
 FSData = {}
 
+
 def getActiveDNs():
     """
     NOTE: It is assumed that the caller will acquire the global data structure lock.
@@ -47,6 +48,17 @@ def getActiveDNs():
         if (currentTime - timeSeen) < constants.HEARTBEAT_TIMEOUT:
             ActiveDNs.append(DataNodeName)
     return ActiveDNs
+
+
+def getReplicaCount():
+    """
+        This function will give us the count of replica for each data block of each DN
+
+    :return:
+    """
+    replicaCount = Counter(replicaCnt['BlockList'] for replicaCnt in FSData)
+    print(replicaCount)
+    return replicaCount
 
 
 def getDNsByAvailableCapacity():
@@ -67,9 +79,7 @@ def getDNsByAvailableCapacity():
 # get list of active DataNodes
 class Heartbeat(Resource):
     def post(self):
-        parser = reqparse.RequestParser()
-        parser.add_argument("DataNodeName")
-        args = parser.parse_args()
+        args = request.get_json(force=True)
         with gLock.gen_wlock():
             LastSeenDNs[args["DataNodeName"]] = time.monotonic()
 
@@ -85,25 +95,23 @@ class HeartbeatTimeout(Resource):
 # receiving block report from DataNodes
 class BlockReport(Resource):
     def post(self, DNID):
-        # TODO:
-        parser = reqparse.RequestParser()
-        parser.add_argument("AvailableCapacity")
-        parser.add_argument("BlockReport")
-        parser.add_argument("TotalCapacity")
-        args = parser.parse_args()
+        args = request.get_json(force=True)
+        if type(args["BlockReport"]) != dict:
+            abort(HTTPStatus.BadRequest.code)
+
         with gLock.gen_wlock():
             FSData[DNID] = {
                 "BlockList": args["BlockReport"],
                 "AvailableCapacity": int(args["AvailableCapacity"]),
                 "TotalCapacity": int(args["TotalCapacity"])
             }
-            print(FSData[DNID])
 
     def get(self):
         """
         :return:
         """
         pass
+
 
 class AllocateBlocks(Resource):
     def post(self):
@@ -119,26 +127,23 @@ class AllocateBlocks(Resource):
             # “File2block2”: [“127.0.0.3", “127.0.0.2”,]
             # }
         }
-
-        :param filename:
-        :param filesize:
         :return:
         """
-        parser = reqparse.RequestParser()
-        parser.add_argument("filename")
-        parser.add_argument("filesize")
-        args = parser.parse_args()
+        args = request.get_json(force=True)
+        if "filesize" not in args or "filename" not in args or type(args["filename"]) != str or type(
+                args["filesize"]) != int:
+            abort(HTTPStatus.BadRequest.code)
 
-        filesize = humanfriendly.parse_size(args["filesize"])
         allocation_table = {}
         with gLock.gen_rlock():
             dns_by_available_capacity = getDNsByAvailableCapacity()
-            for block_num in range(math.ceil(filesize / constants.BLOCKSIZE)):
-                block_id = args["filename"] + ".block." + str(block_num)
+            for block_num in range(math.ceil(args["filesize"] / constants.BLOCKSIZE)):
+                block_id = args["filename"] + ".block-" + str(block_num)
                 allocation_table[block_id] = []
                 for _ in range(constants.REPLICATION_FACTIOR):
                     # print(dns_by_available_capacity)
-                    unique_dns = list(filter(lambda dnid: dnid not in allocation_table[block_id], dns_by_available_capacity))
+                    unique_dns = list(
+                        filter(lambda dnid: dnid not in allocation_table[block_id], dns_by_available_capacity))
                     # print("getting biggest dn from", unique_dns, "excluding", allocation_table[block_id])
                     try:
                         biggest_dn = max(unique_dns, key=dns_by_available_capacity.get)
@@ -155,7 +160,7 @@ class AllocateBlocks(Resource):
         return allocation_table
 
 
-class SendFileStructure(Resource):
+class GetFileStructure(Resource):
     def get(self, filename):
         """
         This methods responds the client with entire file structure
@@ -163,13 +168,21 @@ class SendFileStructure(Resource):
 
         Response:
         {
-            "/home/file1": {
-                    "DN-1": [ (0, 10), (1, 10) ],
-                    "DN-2": [ (2, 10), (5, 10) ],
-                    "DN-3": [ (2, 10), (0, 10), (1, 10) ],
-                    "DN-4": [ (2, 10), (5, 10) ],
-                    "DN-5": [ (1, 10), (5, 10), (0, 10) ],
-                 }
+          "5003": [
+            "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-3",
+            "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-2",
+            "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-1"
+          ],
+          "5004": [
+            "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-3",
+            "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-2",
+            "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-1"
+          ],
+          "5005": [
+            "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-3",
+            "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-2",
+            "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-1"
+          ]
         }
 
         :param filename:
@@ -182,18 +195,88 @@ class SendFileStructure(Resource):
                 if dnid not in active_DNs:
                     # Skip inactive DNs.
                     continue
-                for blockID, block_details in dn_details["BlockList"]:
-                    fname, part = os.path.splitext(blockID)
-                    if fname == filename:
+                for blockID, _ in dn_details["BlockList"].items():
+                    if os.path.splitext(blockID)[0] == filename:
                         if dnid in available_DNs:
-                            available_DNs[dnid].append(part)
+                            available_DNs[dnid].append(blockID)
                         else:
-                            available_DNs[dnid] = [part]
+                            available_DNs[dnid] = [blockID]
 
-        if len(available_DNs) > 0:
-            return available_DNs
+        if not available_DNs:
+            abort(HTTPStatus.NotFound.code)
 
-        return "file not found", 404
+        return available_DNs
+
+
+# TODO: What if the blocks are missing ? i.e. how do we verify that we have gotten the complete file ?
+class GetFileBlocks(Resource):
+    def get(self, filename):
+        """
+        This methods responds the client with the load-balanced set of data-nodes to read the blocks from.
+        The response structure will look like this:
+
+        Response:
+        {
+           "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-10" : "5005",
+           "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-4" : "5004",
+           "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-1" : "5004",
+           "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-5" : "5004",
+           "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-6" : "5003",
+           "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-9" : "5004",
+           "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-7" : "5003",
+           "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-2" : "5003",
+           "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-0" : "5005",
+           "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-8" : "5005",
+           "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-3" : "5003"
+        }
+
+        :type filename: str
+        :param filename: name of the file
+        :return:
+        """
+        blocks = {}
+        with gLock.gen_rlock():
+            active_DNs = getActiveDNs()
+            for dnid, dn_details in FSData.items():
+                if dnid not in active_DNs:
+                    # Skip inactive DNs.
+                    continue
+                for blockID, _ in dn_details["BlockList"].items():
+                    if os.path.splitext(blockID)[0] == filename:
+                        if blockID in blocks:
+                            blocks[blockID].append(dnid)
+                        else:
+                            blocks[blockID] = [dnid]
+
+        if not blocks:
+            abort(HTTPStatus.NotFound.code)
+
+        # Distribute the read load evenly among all data nodes.
+        uniformDNs = {}
+        counter = Counter()
+        # Prever the blocks which have the lowest DN count.
+        for blockID, dns in sorted(blocks.items(), key=lambda e: len(e[1])):
+            selectedDN = None
+            # First find a DN which has not been used earlier.
+            for dn in dns:
+                if dn not in uniformDNs.values():
+                    selectedDN = dn
+                    break
+            else:
+                # If we cannot find a unique DN then use the one with the lowest frequency.
+                for dn, _ in counter.most_common()[::-1]:
+                    # We cannot use a DN which doesn't serve this blockID, so filter out those which do.
+                    if dn in dns:
+                        selectedDN = dn
+                        break
+
+            # Record the block DN host for final read.
+            uniformDNs[blockID] = selectedDN
+            # Also update our stats so that we can avoid re-using this DN too much
+            # and uniformly distribute the read-load over all the DNs.
+            counter.update([selectedDN])
+
+        return uniformDNs
 
 
 class DummyAPI(Resource):
@@ -201,10 +284,7 @@ class DummyAPI(Resource):
         return "Hello World!"
 
     def post(self):
-        parser = reqparse.RequestParser()
-        parser.add_argument("name")
-        parser.add_argument("size")
-        args = parser.parse_args()
+        args = request.get_json()
         print(args['name'])
         print(args['size'])
         return args['name']
@@ -212,7 +292,8 @@ class DummyAPI(Resource):
 
 api.add_resource(AllocateBlocks, "/AllocateBlocks/")
 api.add_resource(Heartbeat, "/heartbeat/")
-api.add_resource(SendFileStructure, "/filestructure/<string:filename>")
+api.add_resource(GetFileStructure, "/filestructure/<string:filename>")
+api.add_resource(GetFileBlocks, "/fileblocks/<string:filename>")
 api.add_resource(BlockReport, "/BlockReport/<string:DNID>")
 api.add_resource(DummyAPI, "/")
 
