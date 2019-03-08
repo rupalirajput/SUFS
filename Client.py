@@ -224,13 +224,15 @@ def main():
     # global currentFileName
     # global currentFileSize
 
-    #download_from_s3(url2)
+    #
 
     global currentFileName
     global currentFileSize
     currentFileName = "amazon_reviews_us_Electronics_v1_00.tsv.gz"
     currentFileSize = 698828243
     if action == "write":
+
+        download_from_s3(url2)
         putToNameNode()
         putToDataNode()
     elif action == "read":
