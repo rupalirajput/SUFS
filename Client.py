@@ -12,6 +12,7 @@ currentFileSize = 0
 currentNumberOfBlocks = 0
 BLOCKSIZE = 67108864
 writeResponse = None
+readResponse = None
 
 #Downloads the file from the given S3 link
 #Stores the file information in the global variables
@@ -83,17 +84,20 @@ def putToNameNode():
         # This means something went wrong.
         #raise ApiError('GET /tasks/ {}'.format(resp.status_code))
         print("Error code: " + str(resp.status_code))
-#
-# def getFromNameNode():
-#     #TODO: Receive list of DN's
-#     #TODO: Receive list of Blocks + Sort them?
-#     resp = requests.get('http://127.0.0.1:5002/')
-#     if resp.status_code != 200:
-#         # This means something went wrong.
-#         #raise ApiError('GET /tasks/ {}'.format(resp.status_code))
-#         print("Error code: " + str(resp.status_code))
-#     else:
-#         print(resp.json())
+
+def getFromNameNode():
+    #TODO: Receive list of DN's
+    #TODO: Receive list of Blocks + Sort them?
+    global currentFileName
+    global readResponse
+    resp = requests.get('http://127.0.0.1:5002/fileblocks/' + currentFileName)
+    if resp.status_code != 200:
+        # This means something went wrong.
+        #raise ApiError('GET /tasks/ {}'.format(resp.status_code))
+        print("Error code: " + str(resp.status_code))
+    else:
+        readResponse = resp.json()
+        print(resp.json())
 
 #WORKS FOR SINGLE DATA NODE STORING ALL BLOCKS
 # def putToDataNode(blockID, chunk):
@@ -119,9 +123,11 @@ def putToDataNode():
     global currentNumberOfBlocks
     global writeResponse
     CHUNK_SIZE = 67108864
-    f = open(currentFileName, 'rb')
+    print(currentFileName)
 
+    f = open(currentFileName, 'rb')
     blockData = f.read(CHUNK_SIZE)
+
 
     # TODO: This is very slow; must be doing reads in parallel.
     while writeResponse != None and blockData:
@@ -152,20 +158,48 @@ def send(blockID, ip, blockData):
     else:
         print(blockID + " written to " + ip)
 
-def getFromDataNode():
-    blockID = "block"
-    newFile = open("newfileTest.tsv.gz", 'wb')
-    with open("newfileTest.tsv.gz", "wb") as  fh:
-        for i in range (1, (currentNumberOfBlocks + 1)):
-            resp = requests.get('http://127.0.0.1:5005/BlockData/' + str(blockID) + str(i))
-            object = resp.json()
-            #print(object)
-            #print(json.dumps(object))
-            currentblock = base64.b64decode(object["data"])
+# def getFromDataNode():
+#     blockID = "block"
+#     newFile = open("newfileTest.tsv.gz", 'wb')
+#     with open("newfileTest.tsv.gz", "wb") as  fh:
+#         for i in range (1, (currentNumberOfBlocks + 1)):
+#             resp = requests.get('http://127.0.0.1:5005/BlockData/' + str(blockID) + str(i))
+#             object = resp.json()
+#             #print(object)
+#             #print(json.dumps(object))
+#             currentblock = base64.b64decode(object["data"])
+#
+#             #newFile.write(currentblock)
+#             fh.write(base64.b64decode(object["data"]))
+#     newFile.close()
 
-            #newFile.write(currentblock)
+def getFromDataNode():
+    blockArr = list()
+    for block in readResponse:
+        blockArr.append(block)
+
+    blockArr.sort(key=lambda x: int(x.split('-')[-1]))
+    with open("COPY" + currentFileName, "wb") as fh:
+        for blockID in blockArr:
+            ip = readResponse[blockID]
+            resp = requests.get('http://127.0.0.1:' + ip + '/BlockData/' + blockID)
+            object = resp.json()
             fh.write(base64.b64decode(object["data"]))
-    newFile.close()
+    fh.close()
+
+
+
+    # with open(currentFileName, "wb") as  fh:
+    #     for i in range(1, (currentNumberOfBlocks + 1)):
+    #         resp = requests.get('http://127.0.0.1:5005/BlockData/' + str(blockID) + str(i))
+    #         object = resp.json()
+    #         # print(object)
+    #         # print(json.dumps(object))
+    #         currentblock = base64.b64decode(object["data"])
+    #
+    #         # newFile.write(currentblock)
+    #         fh.write(base64.b64decode(object["data"]))
+    # newFile.close()
 
 def main():
     print("Welcome to the Seattle University File System (SUFS)!")
@@ -194,8 +228,11 @@ def main():
     global currentFileSize
     currentFileName = "amazon_reviews_us_Electronics_v1_00.tsv.gz"
     currentFileSize = 698828243
-    putToNameNode()
-    putToDataNode()
+    #putToNameNode()
+    #putToDataNode()
+
+    getFromNameNode()
+    getFromDataNode()
 
 if __name__ == "__main__":
     main()
