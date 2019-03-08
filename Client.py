@@ -203,7 +203,9 @@ def getFromDataNode():
 
 def main():
     print("Welcome to the Seattle University File System (SUFS)!")
-    print("Would you like to read or write a file? To read type 'read' to write type 'write'")
+
+    action = input("Would you like to read or write a file? To read type 'read' to write type 'write'")
+    action = action.lower()
     #TODO: Accept input for 'read' or 'write'
     #TODO: IMPLEMENT C-IN FOR URL TO WRITE
     #TODO: IMPLEMENT C-IN FOR FILE NAME WHEN READING
@@ -228,11 +230,15 @@ def main():
     global currentFileSize
     currentFileName = "amazon_reviews_us_Electronics_v1_00.tsv.gz"
     currentFileSize = 698828243
-    #putToNameNode()
-    #putToDataNode()
-
-    getFromNameNode()
-    getFromDataNode()
+    if action == "write":
+        putToNameNode()
+        putToDataNode()
+    elif action == "read":
+        getFromNameNode()
+        getFromDataNode()
+    else:
+        print("Invalid action. Terminating")
+        exit()
 
 if __name__ == "__main__":
     main()
