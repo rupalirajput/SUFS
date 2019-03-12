@@ -95,13 +95,19 @@ def sendBlockReport(name):
 
         time.sleep(constants.BLOCKREPORT_INTERVAL)
 
-
-# send heartbeat to Name Node in a given time frame.
-class Heartbeat(Resource):
+class SendCopy(Resource):
     def post(self):
-        # TODO: make a post request to Name Node
-        return ''
-
+        args = request.get_json(force=True)
+        print(args)
+        if("block_id" not in args or "target_dn" not in args):
+            abort(HTTPStatus.BadRequest.code)
+        data = getBlockData(args["block_id"]);
+        task = {"size" : len(data), "data" : data}
+        resp = request.post("http://"+args["target_dn"]+"/BlockReport/" + args["block_id"], json=task)
+        if resp.status_code != 200:
+            print("Error code:" + str(resp.status_code))
+        else:
+            print("successfully send copy")
 
 class BlockData(Resource):
     def post(self, blockNumber):
@@ -160,6 +166,7 @@ class DummyAPI(Resource):
 
 api.add_resource(BlockData, "/BlockData/<string:blockNumber>")
 api.add_resource(DummyAPI, "/")
+api.add_resource(SendCopy, "/SendCopy")
 
 if __name__ == '__main__':
     dn_port = int(sys.argv[1])
