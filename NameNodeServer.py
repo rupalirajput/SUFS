@@ -340,6 +340,43 @@ class GetFileBlocks(Resource):
         return uniformDNs
 
 
+# Get entire block structure with all DNs
+class GetAllBlocksDNs(Resource):
+    def get(self, filename):
+        """
+        This methods responds the client with the load-balanced set of data-nodes to read the blocks from.
+        The response structure will look like this:
+
+        Response:
+        {
+           "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-10" : "5005", "5004", "5003"
+           "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-4" : "5004", "5005", "5003"
+           "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-1" : "5004", "5003" , "5005"
+        }
+
+        :type filename: str
+        :param filename: name of the file
+        :return:
+        """
+        blocks = {}
+        with gLock.gen_rlock():
+            active_DNs = getActiveDNs()
+            for dnid, dn_details in FSData.items():
+                if dnid not in active_DNs:
+                    # Skip inactive DNs.
+                    continue
+                for blockID, _ in dn_details["BlockList"].items():
+                    if os.path.splitext(blockID)[0] == filename:
+                        if blockID in blocks:
+                            blocks[blockID].append(dnid)
+                        else:
+                            blocks[blockID] = [dnid]
+
+        if not blocks:
+            abort(HTTPStatus.NotFound.code)
+
+        return blocks
+
 class DummyAPI(Resource):
     def get(self):
         return "Hello World!"
@@ -355,6 +392,7 @@ api.add_resource(AllocateBlocks, "/AllocateBlocks/")
 api.add_resource(Heartbeat, "/heartbeat/")
 api.add_resource(GetFileStructure, "/filestructure/<string:filename>")
 api.add_resource(GetFileBlocks, "/fileblocks/<string:filename>")
+api.add_resource(GetAllBlocksDNs, "/AllBlocksDNs/<string:filename>")
 api.add_resource(BlockReport, "/BlockReport/<string:DNID>")
 api.add_resource(DummyAPI, "/")
 

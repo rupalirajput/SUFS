@@ -99,6 +99,19 @@ def getFromNameNode():
         readResponse = resp.json()
         print(resp.json())
 
+def getAllBlocksDNs():
+    #TODO: Receive list of DN's
+    #TODO: Receive list of Blocks + Sort them?
+    global currentFileName
+    global readResponse
+    resp = requests.get('http://127.0.0.1:5002/AllBlocksDNs/' + currentFileName)
+    if resp.status_code != 200:
+        print("Error code: " + str(resp.status_code))
+    else:
+        readResponse = resp.json()
+        print(resp.json())
+
+
 #WORKS FOR SINGLE DATA NODE STORING ALL BLOCKS
 # def putToDataNode(blockID, chunk):
 #     data = str(base64.b64encode(chunk))
@@ -232,12 +245,13 @@ def main():
     currentFileSize = 698828243
     if action == "write":
 
-        download_from_s3(url2)
+        #download_from_s3(url2)
         putToNameNode()
         putToDataNode()
     elif action == "read":
         getFromNameNode()
         getFromDataNode()
+        getAllBlocksDNs()
     else:
         print("Invalid action. Terminating")
         exit()
