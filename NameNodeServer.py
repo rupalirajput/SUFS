@@ -1,6 +1,11 @@
 import math
 import os
+import random
+import threading
 import time
+
+import requests
+
 import constants
 
 from readerwriterlock import rwlock
@@ -19,21 +24,74 @@ LastSeenDNs = {}
 Map of the entire filesystem i.e FSData
 Structure:
 {
-  "/home/file1": {
-                    "DN-1": [ (0, 10), (1, 10) ],
-                    "DN-2": [ (2, 10), (5, 10) ],
-                    "DN-3": [ (2, 10), (0, 10), (1, 10) ],
-                    "DN-4": [ (2, 10), (5, 10) ],
-                    "DN-5": [ (1, 10), (5, 10), (0, 10) ],
-                 },
-  "/home/file2": {
-                    "DN-2": [ (2, 10), (4, 10) ],
-                    "DN-3": [ (2, 10), (4, 10), (1, 10) ],
-                    "DN-5": [ (1, 10), (4, 10), (0, 10) ],
-                 },
+    <DNID> : {
+        "BlockList": {
+            <blockid>: {"size" <length-in-bytes>}
+        },
+        "AvailableCapacity": <length-in-bytes>,
+        "TotalCapacity": <length-in-bytes>
+    },
+    <DNID> : {
+        "BlockList": {
+            <blockid>: {"size" <length-in-bytes>}
+        },
+        "AvailableCapacity": <length-in-bytes>,
+        "TotalCapacity": <length-in-bytes>
+    },
+    <DNID> : {
+        "BlockList": {
+            <blockid>: {"size" <length-in-bytes>}
+        },
+        "AvailableCapacity": <length-in-bytes>,
+        "TotalCapacity": <length-in-bytes>
+    }
 }
 '''
 FSData = {}
+
+
+def rebalanceData():
+    # Get the list of active dns for each blockid.
+    activeDNs = None
+    dnsByAvlCap = None
+    with gLock.gen_rlock():
+        activeDNs = getActiveDNs()
+        dnsByAvlCap = getDNsByAvailableCapacity()
+        allBlockIDs = {}
+        for dnid, dnDetails in FSData.items():
+            if dnid not in activeDNs:
+                print("node failed: ", dnid)
+                continue
+            for blockid, _ in dnDetails["BlockList"].items():
+                if blockid in allBlockIDs:
+                    allBlockIDs[blockid].append(dnid)
+                else:
+                    allBlockIDs[blockid] = [dnid]
+
+    for blockid, dns in allBlockIDs.items():
+        if len(dns) >= constants.REPLICATION_FACTIOR:
+            continue
+        # Find the DNs which do not have a copy yet.
+        possibleTargetDNs = list(set(activeDNs).difference(set(dns)))
+        # Select the DNs which have the most available capacity.
+        possibleTargetDNs.sort(key=dnsByAvlCap.get, reverse=True)
+        # Iterate over the selected DNs.
+        for dnid in possibleTargetDNs[:constants.REPLICATION_FACTIOR - len(dns)]:
+            # This can be improved for better parallelization, but picking the ranom request DNID for now.
+            requestDN = random.choice(dns)
+            print("requesting DN(" + requestDN + ") to copy block " + blockid + " to DN(" + dnid + ")")
+            resp = requests.post(requestDN, json={"block_id": blockid, "target_dn": dnid})
+            if resp.status_code != 200:
+                print("Error code: " + str(resp.status_code))
+                return
+            # TODO: Now we should wait for next block request from dnid before creating more copies of the data.
+            print(blockid + " written to " + dnid)
+
+
+def redundancyManager():
+    while True:
+        rebalanceData()
+        time.sleep(3)
 
 
 def getActiveDNs():
@@ -298,4 +356,5 @@ api.add_resource(BlockReport, "/BlockReport/<string:DNID>")
 api.add_resource(DummyAPI, "/")
 
 if __name__ == '__main__':
+    threading.Thread(target=redundancyManager).start()
     app.run(port='5002')
