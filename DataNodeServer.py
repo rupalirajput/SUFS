@@ -105,7 +105,7 @@ class SendCopy(Resource):
             abort(HTTPStatus.BadRequest.code)
         data = getBlockData(args["block_id"]);
         task = {"size": len(data), "data": data}
-        resp = request.post("http://" + args["target_dn"] + "/BlockData/" + args["block_id"], json=task)
+        resp = requests.post("http://127.0.0.1:" + args["target_dn"] + "/BlockData/" + args["block_id"], json=task)
         if resp.status_code != 200:
             print("Error code:" + str(resp.status_code))
         else:

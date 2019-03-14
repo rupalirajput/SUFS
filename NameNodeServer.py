@@ -80,7 +80,7 @@ def rebalanceData():
             # This can be improved for better parallelization, but picking the ranom request DNID for now.
             requestDN = random.choice(dns)
             print("requesting DN(" + requestDN + ") to copy block " + blockid + " to DN(" + dnid + ")")
-            resp = requests.post(requestDN, json={"block_id": blockid, "target_dn": dnid})
+            resp = requests.post("http://127.0.0.1:" + requestDN + "/SendCopy", json={"block_id": blockid, "target_dn": dnid})
             if resp.status_code != 200:
                 print("Error code: " + str(resp.status_code))
                 return
@@ -90,7 +90,10 @@ def rebalanceData():
 
 def redundancyManager():
     while True:
-        rebalanceData()
+        try:
+            rebalanceData()
+        except Exception as err:
+            print(err)
         time.sleep(3)
 
 
