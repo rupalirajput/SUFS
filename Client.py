@@ -5,6 +5,8 @@ import base64
 import math
 import boto3
 import sys
+import os
+
 
 #TODO: COMMENT ABOUT SSL CONTEXT/INSTALL in order to work with HTTPS
 
@@ -202,31 +204,23 @@ def main():
     else:
         nameNodeIP = sys.argv[1]
     # TODO: SET THE NN IP TO CLI ARG, FOR TESTING HARDCODE FOR NOW
-    # nameNodeIP = sys.argv[0]
-    # validate it?
 
+    #Get user action + filename
     print("Welcome to the Seattle University File System (SUFS)!")
-
     action = input("Would you like to read or write a file? To read type 'read' to write type 'write'")
     action = action.lower()
+    if action != "read" or action != "write":
+        print("Invalid action, terminating")
+        exit()
+
     file = input("What file would you like to read/write?")
-    # TODO: Accept input for 'read' or 'write'
-    # TODO: IMPLEMENT C-IN FOR URL TO WRITE
-    # TODO: IMPLEMENT C-IN FOR FILE NAME WHEN READING
-    # TODO: WRITE
-    # TODO: Get URL from user via keyboard
-    # TODO: Download the file
-    # TODO: Attempt to read the file from local drive and 'divide' into blocks
 
     # Assuming block size is 64MB
-    # Small Sample file
-    # 10240 = 10kB
     url = "https://s3.amazonaws.com/amazon-reviews-pds/tsv/sample_us.tsv"
 
     # 667MB File, should test 1GB
     url2 = "https://s3.amazonaws.com/amazon-reviews-pds/tsv/amazon_reviews_us_Electronics_v1_00.tsv.gz"
-    # global currentFileName
-    # global currentFileSize
+
 
     #
 
@@ -236,38 +230,39 @@ def main():
     currentFileName = "amazon_reviews_us_Electronics_v1_00.tsv.gz"
     # currentFileName = "sctest.png"
     currentFileSize = 698828243
-    # currentFileSize = 135000
+
     if action == "write":
         # download_from_s3(url2)
+
         s3 = boto3.client('s3',
-                          aws_access_key_id = "",
-                          aws_secret_access_key = ""
+                          AWS_ACCESS_KEY_ID = "",
+                          AWS_SECRET_ACCESS_KEY = ""
                           )
 
         # Call S3 to list current buckets
         response = s3.list_buckets()
 
-        bk = s3.get_bucket('my_bucket_name')
-        key = bk.lookup('my_key_name')
+        bk = s3.get_bucket('sufsloh')
+        key = bk.lookup(currentFileName)
         currentFileSize = key.size
         # Get a list of all bucket names from the response
         # buckets = [bucket['Name'] for bucket in response['Buckets']]
         s3.download_file('sufsloh', "amazon_reviews_us_Electronics_v1_00.tsv.gz",
                          "amazon_reviews_us_Electronics_v1_00.tsv.gz")
+        s3.download_file('sufsloh', currentFileName,
+                         currentFileName)
         # Print out the bucket list
         # print("Bucket List: % s" % buckets)
 
         #download_from_s3(url2)
         putToNameNode()
         putToDataNode()
-    elif action == "read":
+    else:
         getFromNameNode()
         if readResponse is not None:
             getFromDataNode()
         getAllBlocksDNs()
-    else:
-        print("Invalid action. Terminating")
-        exit()
+
 
 if __name__ == "__main__":
     main()
