@@ -72,6 +72,9 @@ def putToNameNode():
         writeResponse = resp.json()
     elif resp.status_code == 406:
         print("HDFS does not have enough storage for replication; please consider adding more data nodes")
+    elif resp.status_code == 409:
+        print("File has already been allocated; pulling the allocation structure from namenode.")
+        raise Exception("not implemented yet; the client needs to call the file blocks API and resend the data here")
     else:
         # This means something went wrong.
         #raise ApiError('GET /tasks/ {}'.format(resp.status_code))
@@ -88,6 +91,22 @@ def getFromNameNode():
     if resp.status_code != 200:
         # This means something went wrong.
         #raise ApiError('GET /tasks/ {}'.format(resp.status_code))
+        print("Error code: " + str(resp.status_code))
+    else:
+        readResponse = resp.json()
+        print(resp.json())
+
+
+def getAllBlocksDNs():
+    #TODO: Receive list of DN's
+    #TODO: Receive list of Blocks + Sort them?
+    global currentFileName
+    global readResponse
+    global nameNodeIP
+
+    resp = requests.get('http://' + nameNodeIP + ':5000/AllBlocksDNs/' + currentFileName)
+    #resp = requests.get('http://127.0.0.1:5002/AllBlocksDNs/' + currentFileName)
+    if resp.status_code != 200:
         print("Error code: " + str(resp.status_code))
     else:
         readResponse = resp.json()
@@ -219,11 +238,10 @@ def main():
     currentFileSize = 698828243
     # currentFileSize = 135000
     if action == "write":
-
         # download_from_s3(url2)
         s3 = boto3.client('s3',
-                          aws_access_key_id="AKIAISVIP2DWAJUIIHOQ",
-                          aws_secret_access_key="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"
+                          aws_access_key_id = "",
+                          aws_secret_access_key = ""
                           )
 
         # Call S3 to list current buckets
@@ -239,11 +257,14 @@ def main():
         # Print out the bucket list
         # print("Bucket List: % s" % buckets)
 
+        #download_from_s3(url2)
         putToNameNode()
         putToDataNode()
     elif action == "read":
         getFromNameNode()
-        getFromDataNode()
+        if readResponse is not None:
+            getFromDataNode()
+        getAllBlocksDNs()
     else:
         print("Invalid action. Terminating")
         exit()
