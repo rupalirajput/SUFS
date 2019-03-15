@@ -80,7 +80,8 @@ def rebalanceData():
             # This can be improved for better parallelization, but picking the ranom request DNID for now.
             requestDN = random.choice(dns)
             print("requesting DN(" + requestDN + ") to copy block " + blockid + " to DN(" + dnid + ")")
-            resp = requests.post("http://127.0.0.1:" + requestDN + "/SendCopy", json={"block_id": blockid, "target_dn": dnid})
+            resp = requests.post("http://" + requestDN + "/SendCopy", json={"block_id": blockid, "target_dn": dnid})
+            #resp = requests.post("http://127.0.0.1:" + requestDN + "/SendCopy", json={"block_id": blockid, "target_dn": dnid})
             if resp.status_code != 200:
                 print("Error code: " + str(resp.status_code))
                 return
@@ -339,6 +340,42 @@ class GetFileBlocks(Resource):
 
         return uniformDNs
 
+# Get entire block structure with all DNs
+class GetAllBlocksDNs(Resource):
+    def get(self, filename):
+        """
+        This methods responds the client with the load-balanced set of data-nodes to read the blocks from.
+        The response structure will look like this:
+
+        Response:
+        {
+           "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-10" : "5005", "5004", "5003"
+           "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-4" : "5004", "5005", "5003"
+           "amazon_reviews_us_Electronics_v1_00.tsv.gz.block-1" : "5004", "5003" , "5005"
+        }
+
+        :type filename: str
+        :param filename: name of the file
+        :return:
+        """
+        blocks = {}
+        with gLock.gen_rlock():
+            active_DNs = getActiveDNs()
+            for dnid, dn_details in FSData.items():
+                if dnid not in active_DNs:
+                    # Skip inactive DNs.
+                    continue
+                for blockID, _ in dn_details["BlockList"].items():
+                    if os.path.splitext(blockID)[0] == filename:
+                        if blockID in blocks:
+                            blocks[blockID].append(dnid)
+                        else:
+                            blocks[blockID] = [dnid]
+
+        if not blocks:
+            abort(HTTPStatus.NotFound.code)
+
+        return blocks
 
 class DummyAPI(Resource):
     def get(self):
@@ -360,4 +397,5 @@ api.add_resource(DummyAPI, "/")
 
 if __name__ == '__main__':
     threading.Thread(target=redundancyManager).start()
-    app.run(port='5002')
+    #app.run(port='5002')
+    app.run(host='0.0.0.0', port='5000')

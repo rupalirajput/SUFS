@@ -5,6 +5,7 @@ import psutil
 import requests
 import constants
 import threading
+import socket
 
 from flask import Flask
 from flask_restful import Api, Resource, request
@@ -30,6 +31,7 @@ Structure:
 gLock = rwlock.RWLockRead()
 BlockList = None
 DATA_DIR = None
+nameNodeIP = ""
 
 
 def storeBlockData(filename, data):
@@ -63,10 +65,13 @@ def scanData(dir):
 
 
 def sendHeartBeats(name):
+    global nameNodeIP
+
     task = {"DataNodeName": name}
     while True:
         try:
-            resp = requests.post('http://127.0.0.1:5002/heartbeat/', json=task)
+            resp = requests.post('http://' + nameNodeIP + ':5000/heartbeat/', json=task)
+            #resp = requests.post('http://127.0.0.1:5002/heartbeat/', json=task)
             if resp.status_code != 200:
                 print("Error code: " + str(resp.status_code))
             else:
@@ -79,6 +84,7 @@ def sendHeartBeats(name):
 
 def sendBlockReport(name):
     global BlockList
+    global nameNodeIP
 
     while True:
         du = psutil.disk_usage(DATA_DIR)
@@ -86,7 +92,8 @@ def sendBlockReport(name):
             task = {"AvailableCapacity": du.free, "TotalCapacity": du.total, "BlockReport": BlockList.copy()}
 
         try:
-            resp = requests.post('http://127.0.0.1:5002/BlockReport/' + name, json=task)
+            resp = requests.post('http://'+ nameNodeIP +':5000/BlockReport/' + name, json=task)
+            #resp = requests.post('http://127.0.0.1:5002/BlockReport/' + name, json=task)
             if resp.status_code != 200:
                 print("Error code: " + str(resp.status_code))
             else:
@@ -98,6 +105,7 @@ def sendBlockReport(name):
 
 
 class SendCopy(Resource):
+
     def post(self):
         args = request.get_json(force=True)
         print(args)
@@ -105,7 +113,8 @@ class SendCopy(Resource):
             abort(HTTPStatus.BadRequest.code)
         data = getBlockData(args["block_id"]);
         task = {"size": len(data), "data": data}
-        resp = requests.post("http://127.0.0.1:" + args["target_dn"] + "/BlockData/" + args["block_id"], json=task)
+        resp = requests.post("http://" + args["target_dn"] + "/BlockData/" + args["block_id"], json=task)
+        #resp = requests.post("http://127.0.0.1:" + args["target_dn"] + "/BlockData/" + args["block_id"], json=task)
         if resp.status_code != 200:
             print("Error code:" + str(resp.status_code))
         else:
@@ -173,7 +182,15 @@ api.add_resource(SendCopy, "/SendCopy")
 
 if __name__ == '__main__':
     dn_port = int(sys.argv[1])
-    DATA_DIR = "./blockDataList_" + str(dn_port)
+    nameNodeIP = sys.argv[2]
+
+    hostname = socket.gethostname()
+    IPAddr = socket.gethostbyname(hostname)
+    nodeID = IPAddr + ":" +str(dn_port)
+    print("IP: " + nodeID)
+
+
+    DATA_DIR = "./blockDataList_" + str(nodeID)
     try:
         os.mkdir(DATA_DIR)
     except FileExistsError:
@@ -182,8 +199,12 @@ if __name__ == '__main__':
     # Scan the data before sending blocklist.
     BlockList = scanData(DATA_DIR)
 
-    threading.Thread(target=sendHeartBeats, args=(str(dn_port),)).start()
-    threading.Thread(target=sendBlockReport, args=(str(dn_port),)).start()
+    # threading.Thread(target=sendHeartBeats, args=(str(dn_port),)).start()
+    # threading.Thread(target=sendBlockReport, args=(str(dn_port),)).start()
+
+    threading.Thread(target=sendHeartBeats, args=(nodeID,)).start()
+    threading.Thread(target=sendBlockReport, args=(nodeID,)).start()
     print(psutil.virtual_memory().available)
     print(psutil.virtual_memory().total)
-    app.run(port=dn_port)
+    #app.run(port=dn_port)
+    app.run(host='0.0.0.0', port=dn_port)

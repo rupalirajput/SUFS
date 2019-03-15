@@ -3,6 +3,8 @@ import shutil
 import requests
 import base64
 import math
+import boto3
+import sys
 
 #TODO: COMMENT ABOUT SSL CONTEXT/INSTALL in order to work with HTTPS
 
@@ -13,6 +15,7 @@ currentNumberOfBlocks = 0
 BLOCKSIZE = 67108864
 writeResponse = None
 readResponse = None
+nameNodeIP = ""
 
 #Downloads the file from the given S3 link
 #Stores the file information in the global variables
@@ -39,19 +42,6 @@ def download_from_s3(url):
     else:
         currentNumberOfBlocks = math.ceil(float(currentFileSize)/BLOCKSIZE)
 
-def read_in_chunks(file_object, CHUNK_SIZE=67108864):
-    #67108864 = 64 MB in BLOCKS
-    """Lazy function (generator) to read a file piece by piece.
-    Default chunk size: 1k."""
-    global currentFileName
-
-    f = open(currentFileName, 'rb')
-    chunk = f.read(CHUNK_SIZE)
-    while chunk:  # loop until the chunk is empty (the file is exhausted)
-        print("BLOCK READ")
-        chunk = f.read(CHUNK_SIZE)  # read the next chunk
-    f.close()
-
 # This method does a POST method to the NameNodeServer
 # it will send the name of the file along with the size of the file
 # so that the NameNode can generate a block:DataNode list.
@@ -71,9 +61,11 @@ def putToNameNode():
     global currentFileName
     global currentFileSize
     global writeResponse
+    global nameNodeIP
 
     task = {"filename": currentFileName, "filesize" : currentFileSize}
-    resp = requests.post('http://127.0.0.1:5002/AllocateBlocks/', json=task)
+    resp = requests.post('http://'+ nameNodeIP +':5000/AllocateBlocks/', json=task)
+    #resp = requests.post('http://127.0.0.1:5002/AllocateBlocks/', json=task)
     if resp.status_code == 200:
         print("Successful post")
         print(resp.json())
@@ -90,7 +82,9 @@ def getFromNameNode():
     #TODO: Receive list of Blocks + Sort them?
     global currentFileName
     global readResponse
-    resp = requests.get('http://127.0.0.1:5002/fileblocks/' + currentFileName)
+    global nameNodeIP
+
+    resp = requests.get('http://' + nameNodeIP + ':5000/fileblocks/' + currentFileName)
     if resp.status_code != 200:
         # This means something went wrong.
         #raise ApiError('GET /tasks/ {}'.format(resp.status_code))
@@ -99,21 +93,6 @@ def getFromNameNode():
         readResponse = resp.json()
         print(resp.json())
 
-#WORKS FOR SINGLE DATA NODE STORING ALL BLOCKS
-# def putToDataNode(blockID, chunk):
-#     data = str(base64.b64encode(chunk))
-#     data = data[2: len(data) - 1]
-#
-#
-#     task = {"data": data, "size": str(chunk.__sizeof__())}
-#     resp = requests.post('http://127.0.0.1:5005/BlockData/' + blockID, json=task)
-#     if resp.status_code != 200:
-#         # This means something went wrong.
-#         #raise ApiError('GET /tasks/ {}'.format(resp.status_code))
-#         print("Error code: " + str(resp.status_code))
-#     else:
-#         print("Successful post")
-#         print(resp.json())
 
 #This method parses through the block list and data nodes
 #returned from the NameNodeServer and distributes all
@@ -150,7 +129,8 @@ def send(blockID, ip, blockData):
     data = data[2: len(data) - 1]
 
     task = {"data": data, "size": blockData.__sizeof__()}
-    resp = requests.post('http://127.0.0.1:' + ip + '/BlockData/' + blockID, json=task)
+    resp = requests.post('http://' + ip + '/BlockData/' + blockID, json=task)
+    #resp = requests.post('http://127.0.0.1:' + ip + '/BlockData/' + blockID, json=task)
     if resp.status_code != 200:
         # This means something went wrong.
         #raise ApiError('GET /tasks/ {}'.format(resp.status_code))
@@ -158,21 +138,7 @@ def send(blockID, ip, blockData):
     else:
         print(blockID + " written to " + ip)
 
-# def getFromDataNode():
-#     blockID = "block"
-#     newFile = open("newfileTest.tsv.gz", 'wb')
-#     with open("newfileTest.tsv.gz", "wb") as  fh:
-#         for i in range (1, (currentNumberOfBlocks + 1)):
-#             resp = requests.get('http://127.0.0.1:5005/BlockData/' + str(blockID) + str(i))
-#             object = resp.json()
-#             #print(object)
-#             #print(json.dumps(object))
-#             currentblock = base64.b64decode(object["data"])
-#
-#             #newFile.write(currentblock)
-#             fh.write(base64.b64decode(object["data"]))
-#     newFile.close()
-
+#Reading block:ip
 def getFromDataNode():
     blockArr = list()
     for block in readResponse:
@@ -182,44 +148,63 @@ def getFromDataNode():
     with open("COPY" + currentFileName, "wb") as fh:
         for blockID in blockArr:
             ip = readResponse[blockID]
-            resp = requests.get('http://127.0.0.1:' + ip + '/BlockData/' + blockID)
+            resp = requests.get('http://' + ip + '/BlockData/' + blockID)
+            #resp = requests.get('http://127.0.0.1:' + ip + '/BlockData/' + blockID)
             object = resp.json()
             fh.write(base64.b64decode(object["data"]))
     fh.close()
 
 
+#Reading block:[IP1, IP2, IP3]
+# def getFromDataNode():
+#     blockArr = list()
+#     for block in readResponse:
+#         blockArr.append(block)
+#
+#     blockArr.sort(key=lambda x: int(x.split('-')[-1]))
+#     with open("COPY" + currentFileName, "wb") as fh:
+#         for blockID in blockArr:
+#             print(readResponse[blockID])
+#             ip = readResponse[blockID][0]
+#             resp = requests.get('http://' + ip + '/BlockData/' + blockID)
+#             # resp = requests.get('http://127.0.0.1:' + ip + '/BlockData/' + blockID)
+#             object = resp.json()
+#             fh.write(base64.b64decode(object["data"]))
+#     fh.close()
 
-    # with open(currentFileName, "wb") as  fh:
-    #     for i in range(1, (currentNumberOfBlocks + 1)):
-    #         resp = requests.get('http://127.0.0.1:5005/BlockData/' + str(blockID) + str(i))
-    #         object = resp.json()
-    #         # print(object)
-    #         # print(json.dumps(object))
-    #         currentblock = base64.b64decode(object["data"])
-    #
-    #         # newFile.write(currentblock)
-    #         fh.write(base64.b64decode(object["data"]))
-    # newFile.close()
 
 def main():
+    global nameNodeIP
+    if len(sys.argv) < 1:
+        print("Missing command line argument.")
+        print("Need to enter Name Node's IP")
+        print("Terminating")
+        exit()
+    else:
+        nameNodeIP = sys.argv[1]
+    # TODO: SET THE NN IP TO CLI ARG, FOR TESTING HARDCODE FOR NOW
+    # nameNodeIP = sys.argv[0]
+    # validate it?
+
     print("Welcome to the Seattle University File System (SUFS)!")
 
     action = input("Would you like to read or write a file? To read type 'read' to write type 'write'")
     action = action.lower()
-    #TODO: Accept input for 'read' or 'write'
-    #TODO: IMPLEMENT C-IN FOR URL TO WRITE
-    #TODO: IMPLEMENT C-IN FOR FILE NAME WHEN READING
-    #TODO: WRITE
-    #TODO: Get URL from user via keyboard
-    #TODO: Download the file
-    #TODO: Attempt to read the file from local drive and 'divide' into blocks
+    file = input("What file would you like to read/write?")
+    # TODO: Accept input for 'read' or 'write'
+    # TODO: IMPLEMENT C-IN FOR URL TO WRITE
+    # TODO: IMPLEMENT C-IN FOR FILE NAME WHEN READING
+    # TODO: WRITE
+    # TODO: Get URL from user via keyboard
+    # TODO: Download the file
+    # TODO: Attempt to read the file from local drive and 'divide' into blocks
 
-    #Assuming block size is 64MB
-    #Small Sample file
-    #10240 = 10kB
+    # Assuming block size is 64MB
+    # Small Sample file
+    # 10240 = 10kB
     url = "https://s3.amazonaws.com/amazon-reviews-pds/tsv/sample_us.tsv"
 
-    #667MB File, should test 1GB
+    # 667MB File, should test 1GB
     url2 = "https://s3.amazonaws.com/amazon-reviews-pds/tsv/amazon_reviews_us_Electronics_v1_00.tsv.gz"
     # global currentFileName
     # global currentFileSize
@@ -228,11 +213,32 @@ def main():
 
     global currentFileName
     global currentFileSize
+    #currentFileName = file
     currentFileName = "amazon_reviews_us_Electronics_v1_00.tsv.gz"
+    # currentFileName = "sctest.png"
     currentFileSize = 698828243
+    # currentFileSize = 135000
     if action == "write":
 
-        download_from_s3(url2)
+        # download_from_s3(url2)
+        s3 = boto3.client('s3',
+                          aws_access_key_id="AKIAISVIP2DWAJUIIHOQ",
+                          aws_secret_access_key="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"
+                          )
+
+        # Call S3 to list current buckets
+        response = s3.list_buckets()
+
+        bk = s3.get_bucket('my_bucket_name')
+        key = bk.lookup('my_key_name')
+        currentFileSize = key.size
+        # Get a list of all bucket names from the response
+        # buckets = [bucket['Name'] for bucket in response['Buckets']]
+        s3.download_file('sufsloh', "amazon_reviews_us_Electronics_v1_00.tsv.gz",
+                         "amazon_reviews_us_Electronics_v1_00.tsv.gz")
+        # Print out the bucket list
+        # print("Bucket List: % s" % buckets)
+
         putToNameNode()
         putToDataNode()
     elif action == "read":
