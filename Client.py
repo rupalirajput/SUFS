@@ -80,6 +80,9 @@ def putToNameNode():
         writeResponse = resp.json()
     elif resp.status_code == 406:
         print("HDFS does not have enough storage for replication; please consider adding more data nodes")
+    elif resp.status_code == 409:
+        print("File has already been allocated; pulling the allocation structure from namenode.")
+        raise Exception("not implemented yet; the client needs to call the file blocks API and resend the data here")
     else:
         # This means something went wrong.
         #raise ApiError('GET /tasks/ {}'.format(resp.status_code))
@@ -241,7 +244,7 @@ def main():
 
     global currentFileName
     global currentFileSize
-    currentFileName = "amazon_reviews_us_Electronics_v1_00.tsv.gz"
+    currentFileName = "amazon_reviews_us_Electronics_v1_00.tsv.gz.2"
     currentFileSize = 698828243
     if action == "write":
 
@@ -250,7 +253,8 @@ def main():
         putToDataNode()
     elif action == "read":
         getFromNameNode()
-        getFromDataNode()
+        if readResponse is not None:
+            getFromDataNode()
         getAllBlocksDNs()
     else:
         print("Invalid action. Terminating")
