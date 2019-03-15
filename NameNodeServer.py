@@ -67,8 +67,6 @@ def loadMetaData():
 def addToMetaData(filename, blockids):
     with gMetadataLock.gen_wlock():
         metadata = _loadMetaData()
-        if filename in metadata:
-            abort(HTTPStatus.Conflict.code)
         metadata[filename] = blockids
         with open(METADATA_FILE, "w") as f:
             json.dump(metadata, f)
@@ -177,6 +175,15 @@ class BlockReport(Resource):
                 "TotalCapacity": int(args["TotalCapacity"])
             }
 
+def getExistingDNsForBlockID(block_id):
+    """
+
+    :rtype: list
+    """
+    for dnid, dn_details in FSData.items():
+        if block_id in dn_details["BlockList"].keys():
+            yield  dnid
+
 class AllocateBlocks(Resource):
     def post(self):
         """
@@ -203,10 +210,12 @@ class AllocateBlocks(Resource):
             for block_num in range(math.ceil(args["filesize"] / constants.BLOCKSIZE)):
                 block_id = args["filename"] + ".block-" + str(block_num)
                 allocation_table[block_id] = []
-                for _ in range(constants.REPLICATION_FACTIOR):
+                existing_allocation = list(getExistingDNsForBlockID(block_id))
+                remainingReplication = constants.REPLICATION_FACTIOR - len(existing_allocation)
+                for _ in range(remainingReplication):
                     # print(dns_by_available_capacity)
                     unique_dns = list(
-                        filter(lambda dnid: dnid not in allocation_table[block_id], dns_by_available_capacity))
+                        filter(lambda dnid: dnid not in allocation_table[block_id] and dnid not in existing_allocation, dns_by_available_capacity))
                     # print("getting biggest dn from", unique_dns, "excluding", allocation_table[block_id])
                     try:
                         biggest_dn = max(unique_dns, key=dns_by_available_capacity.get)
@@ -219,6 +228,11 @@ class AllocateBlocks(Resource):
                         #  So, to be super efficient, utilize the smaller size instead.
                         dns_by_available_capacity[biggest_dn] -= constants.BLOCKSIZE
                         allocation_table[block_id].append(biggest_dn)
+
+        # If there are no blocks to be copied over to DNs then abort saying this file already exists.
+        if not sum([], sum(allocation_table.values(), [])):
+            print("dropping request to write the same file again: ", args["filename"])
+            abort(HTTPStatus.Conflict.code)
 
         addToMetaData(args["filename"], list(allocation_table.keys()))
         return allocation_table

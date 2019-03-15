@@ -1,5 +1,7 @@
+import shutil
 import sys
 import os
+import tempfile
 import time
 import psutil
 import requests
@@ -31,14 +33,16 @@ Structure:
 gLock = rwlock.RWLockRead()
 BlockList = None
 DATA_DIR = None
+TMP_DIR = "./tmp"
 nameNodeIP = ""
 
 
 def storeBlockData(filename, data):
-    # TODO: This is not fault tolerant. What if the system crashes after open() below ?
-    f = open(os.path.join(DATA_DIR, filename), "w")
-    f.write(data)
-    f.close()
+    tmpf = tempfile.NamedTemporaryFile(dir=TMP_DIR, mode="wb", delete=False)
+    tmpf.write(data)
+    tmpf.flush()
+    tmpf.close()
+    os.rename(tmpf.name, filename)
 
 
 def getBlockData(filename):
@@ -143,7 +147,7 @@ class BlockData(Resource):
         with gLock.gen_wlock():
             BlockList[blockNumber] = {"size": args["size"]}
 
-        storeBlockData(blockNumber, args["data"])
+        storeBlockData(blockNumber, args["data"].encode())
 
     def get(self, blockNumber):
         """
@@ -193,6 +197,11 @@ if __name__ == '__main__':
     DATA_DIR = "./blockDataList_" + str(nodeID)
     try:
         os.mkdir(DATA_DIR)
+    except FileExistsError:
+        pass
+    try:
+        shutil.rmtree(TMP_DIR, ignore_errors=True)
+        os.mkdir(TMP_DIR)
     except FileExistsError:
         pass
 
