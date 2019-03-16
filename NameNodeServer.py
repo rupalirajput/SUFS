@@ -76,6 +76,8 @@ def rebalanceData():
     # Get the list of active dns for each blockid.
     activeDNs = None
     dnsByAvlCap = None
+    failedDN = None
+
     with gLock.gen_rlock():
         activeDNs = getActiveDNs()
         dnsByAvlCap = getDNsByAvailableCapacity()
@@ -87,6 +89,7 @@ def rebalanceData():
                 print("NODE FAILED: ", dnid)
                 print("=============")
                 print("=============")
+                failedDN = dnid
                 continue
             for blockid, _ in dnDetails["BlockList"].items():
                 if blockid in allBlockIDs:
@@ -112,9 +115,9 @@ def rebalanceData():
             if resp.status_code != 200:
                 print("Error code: " + str(resp.status_code))
                 return
-            # TODO: Now we should wait for next block request from dnid before creating more copies of the data.
             print(blockid + " written to " + dnid)
-
+    if failedDN:
+        del FSData[failedDN]
 
 def redundancyManager():
     while True:
@@ -224,8 +227,6 @@ class AllocateBlocks(Resource):
                         # enough nodes.
                         abort(HTTPStatus.NotAcceptable.code)
                     else:
-                        # TODO: IF this is the last block then it might be smaller than the actual blocksize.
-                        #  So, to be super efficient, utilize the smaller size instead.
                         dns_by_available_capacity[biggest_dn] -= constants.BLOCKSIZE
                         allocation_table[block_id].append(biggest_dn)
 
@@ -396,5 +397,4 @@ api.add_resource(BlockReport, "/BlockReport/<string:DNID>")
 
 if __name__ == '__main__':
     threading.Thread(target=redundancyManager).start()
-    #app.run(port='5002')
     app.run(host='0.0.0.0', port='5000')

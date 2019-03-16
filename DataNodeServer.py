@@ -8,8 +8,6 @@ import requests
 import constants
 import threading
 import socket
-
-from flask import Flask
 from flask_restful import Api, Resource, request
 from flask import Flask, abort
 import werkzeug.exceptions as HTTPStatus
@@ -42,7 +40,7 @@ def storeBlockData(filename, data):
     tmpf.write(data)
     tmpf.flush()
     tmpf.close()
-    os.rename(tmpf.name, filename)
+    os.rename(tmpf.name, os.path.join(DATA_DIR, filename))
 
 
 def getBlockData(filename):
@@ -122,7 +120,7 @@ class SendCopy(Resource):
         if resp.status_code != 200:
             print("Error code:" + str(resp.status_code))
         else:
-            print("successfully send copy")
+            print("successfully sent copy")
 
 
 class BlockData(Resource):
@@ -171,27 +169,22 @@ class BlockData(Resource):
         return {"data": data}
 
 
-class DummyAPI(Resource):
-    def get(self):
-        return "Hello World!"
-
-    def post(self):
-        args = request.get_json(force=True)
-        return args['name']
-
-
 api.add_resource(BlockData, "/BlockData/<string:blockNumber>")
-api.add_resource(DummyAPI, "/")
 api.add_resource(SendCopy, "/SendCopy")
 
 if __name__ == '__main__':
+
+    if len(sys.argv) < 2:
+        print("Please enter DataNode port number - 5000")
+        print("Please enter NameNode IP address")
+        sys.exit(1)
+
     dn_port = int(sys.argv[1])
     nameNodeIP = sys.argv[2]
 
     hostname = socket.gethostname()
     IPAddr = socket.gethostbyname(hostname)
     nodeID = IPAddr + ":" +str(dn_port)
-    print("IP: " + nodeID)
 
 
     DATA_DIR = "./blockDataList_" + str(nodeID)
@@ -208,12 +201,8 @@ if __name__ == '__main__':
     # Scan the data before sending blocklist.
     BlockList = scanData(DATA_DIR)
 
-    # threading.Thread(target=sendHeartBeats, args=(str(dn_port),)).start()
-    # threading.Thread(target=sendBlockReport, args=(str(dn_port),)).start()
-
     threading.Thread(target=sendHeartBeats, args=(nodeID,)).start()
     threading.Thread(target=sendBlockReport, args=(nodeID,)).start()
     print(psutil.virtual_memory().available)
     print(psutil.virtual_memory().total)
-    #app.run(port=dn_port)
     app.run(host='0.0.0.0', port=dn_port)
